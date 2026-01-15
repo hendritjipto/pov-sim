@@ -5,6 +5,8 @@ services:
       context: ./airlines
     ports:
       - "8080:8080"
+    depends_on:
+      - alloy
   flights:
     build: 
       context: ./flights
@@ -15,6 +17,41 @@ services:
       context: ./frontend
     ports:
       - "3000:3000"
+    environment:
+      - REACT_APP_FARO_COLLECTOR_URL=http://localhost:12347/collect
     volumes:
       - ./frontend:/app
       - /app/node_modules
+  alloy:
+    image: grafana/alloy:latest
+    ports:
+      - "12345:12345"
+      - "4317:4317"
+      - "4318:4318"
+      - "12347:12347"  # Faro receiver for frontend observability
+    volumes:
+      - $PWD/alloy/config.alloy:/etc/alloy/config.alloy
+      - /var/run/docker.sock:/var/run/docker.sock:ro      
+    command: run --server.http.listen-addr=0.0.0.0:12345 --storage.path=/var/lib/alloy/data /etc/alloy/config.alloy --stability.level experimental
+    environment:
+      - GCLOUD_RW_API_KEY=${GCLOUD_RW_API_KEY:?GCLOUD_RW_API_KEY not set}
+
+  # k6 Load Testing (runs continuously)
+  k6:
+    image: grafana/k6:latest
+    volumes:
+      - ./k6/scripts:/scripts
+    environment:
+      - FRONTEND_BASE_URL=http://frontend:3000
+      - FLIGHTS_API_URL=http://flights:5001
+      - AIRLINES_API_URL=http://airlines:8080
+      - VUS=1
+      - DURATION=0       # 0 = run forever (24h cycles)
+      - INTERVAL=30      # Run test every 30 seconds
+      - ERROR_RATE=0.1   # 10% of requests will error
+    depends_on:
+      - flights
+      - airlines
+      - frontend
+    restart: unless-stopped
+    command: ["run", "/scripts/load-test.js"]

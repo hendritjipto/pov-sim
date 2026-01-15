@@ -4,4 +4,12 @@ up:
 down:
 	docker compose down
 
-.PHONY: up down
+rebuild:
+	docker compose build --no-cache
+	docker compose up
+
+rebuild-frontend:
+	docker compose build --no-cache frontend
+	docker compose up
+
+.PHONY: up down rebuild rebuild-frontend
